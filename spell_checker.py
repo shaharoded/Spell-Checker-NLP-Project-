@@ -242,7 +242,7 @@ class Spell_Checker:
         error_prob = self._error_probability(candidate, word, alpha)  # Error model probability
         return 1e8*(lm_prob * error_prob) 
     
-    
+
     def _error_probability(self, candidate, word, alpha):
         """
         Calculate the probability of transforming `word` to `candidate`.
@@ -251,9 +251,11 @@ class Spell_Checker:
         Will differenciate the different types of errors before calculation.
         
         Function will take words of edit distance 2 from _known(candidate) by looking 
-        at all of their distance 1 edits, and than look for the max probability for them.
+        at all of their distance 1 edits, and calculate 
+        max( _error_probability(candidate, edit1_to_candidate) * 
+        _error_probability(edit1_to_candidate, word) )
         
-        Error probability should never be 0.
+        Error probability should never be 0, so candidate probability won't be 0.
         
         Args:
             candidate (str) - A candidate word to replace 'word'
@@ -263,41 +265,54 @@ class Spell_Checker:
         
         Return: Float, probability.
         """
-        if not self.error_tables or word == candidate:
-            return alpha  # If the word is the same, no error occurred.
 
-        # Initialize the probabilities
-        insertion_prob = 0.0
-        deletion_prob = 0.0
-        substitution_prob = 0.0
-        transposition_prob = 0.0
+        def direct_edit_probability(cand, wd):
+            """
+            Calculate the probability of transforming `wd` to `cand` directly.
+            """
+            if not self.error_tables or wd == cand:
+                return alpha  # If the word is the same, no error occurred.
 
-        # Identify the type of edit and calculate the corresponding probability
-        if len(candidate) + 1 == len(word):  # Possible insertion
-            insertion_prob = self._insertion_probability(candidate, word)
-        elif len(candidate) == len(word) + 1:  # Possible deletion
-            deletion_prob = self._deletion_probability(candidate, word)
-        elif len(candidate) == len(word):  # Possible substitution or transposition
-            if any(candidate[i] != word[i] for i in range(len(word))):
-                substitution_prob = self._substitution_probability(candidate, word)
-            if any(candidate[i] == word[i+1] and candidate[i+1] == word[i] for i in range(len(word)-1)):
-                transposition_prob = self._transposition_probability(candidate, word)
+            # Initialize the probabilities
+            insertion_prob = 0.0
+            deletion_prob = 0.0
+            substitution_prob = 0.0
+            transposition_prob = 0.0
 
+            # Identify the type of edit and calculate the corresponding probability
+            if len(cand) + 1 == len(wd):  # Possible insertion
+                insertion_prob = self._insertion_probability(cand, wd)
+            elif len(cand) == len(wd) + 1:  # Possible deletion
+                deletion_prob = self._deletion_probability(cand, wd)
+            elif len(cand) == len(wd):  # Possible substitution or transposition
+                if any(cand[i] != wd[i] for i in range(len(wd))):
+                    substitution_prob = self._substitution_probability(cand, wd)
+                if any(cand[i] == wd[i+1] and cand[i+1] == wd[i] for i in range(len(wd)-1)):
+                    transposition_prob = self._transposition_probability(cand, wd)
+
+            # Return the highest probability among the calculated probabilities
+            return max(insertion_prob, deletion_prob, substitution_prob, transposition_prob, 1e-8)
+
+        # First calculate the direct edit probability
+        max_prob = direct_edit_probability(candidate, word)
+
+        # Now, consider edits of edits (distance 2 words)
         for intermediate in self._edits1(word):
             if intermediate == candidate:
                 continue
-            elif len(candidate) + 1 == len(intermediate):
-                deletion_prob = max(deletion_prob, self._deletion_probability(candidate, intermediate))
-            elif len(candidate) == len(intermediate) + 1:
-                insertion_prob = max(insertion_prob, self._insertion_probability(candidate, intermediate))
-            elif len(candidate) == len(intermediate):
-                substitution_prob = max(substitution_prob, self._substitution_probability(candidate, intermediate))
-                transposition_prob = max(transposition_prob, self._transposition_probability(candidate, intermediate))
+            
+            prob_intermediate_to_word = direct_edit_probability(intermediate, word)
+            
+            for edit1 in self._edits1(intermediate):
+                if edit1 == candidate:
+                    # Loop to find the edit tat will turn intermediate to candidate, calculate just for it.
+                    prob_candidate_to_intermediate = direct_edit_probability(candidate, intermediate)
+                    combined_prob = prob_intermediate_to_word * prob_candidate_to_intermediate
+                    max_prob = max(max_prob, combined_prob)
 
-        # Return the highest probability among the calculated probabilities
-        return max(insertion_prob, deletion_prob, substitution_prob, transposition_prob, 1e-8)
+        return max_prob
 
-    
+
     def _insertion_probability(self, candidate, word):
         """
         Calculate the probability of an insertion error:
