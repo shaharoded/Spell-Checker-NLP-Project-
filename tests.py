@@ -1,6 +1,7 @@
 from spelling_confusion_matrices import error_tables
 from spell_checker import Spell_Checker, normalize_text
 import os
+import random
 
 ########################################################################
 #                               Tests                                  #
@@ -21,7 +22,7 @@ def test_text_normalization():
         normalized = normalize_text(example)
         print(f"Example {i+1}: {normalized}")
 
-def test_text_generation(file_path, context = None):
+def test_text_generation(file_path, contexts):
     spell_checker = Spell_Checker()  
     lm = Spell_Checker.Language_Model(n=3, chars=False)
     text = load_text_file(file_path)
@@ -29,8 +30,12 @@ def test_text_generation(file_path, context = None):
 
     # Build the model with your loaded text
     spell_checker.add_language_model(lm)
-    generated_text = spell_checker.lm.generate(context, n=50)
-    print("Generated Text:", generated_text)
+    for context in contexts:
+        n = random.randint(5, 25)
+        generated_text = spell_checker.lm.generate(context, n)
+        print(f"\nGenerated Text of size {n}:\n", generated_text)
+        print(f"text size is {len(generated_text.split())}")
+    
 
 # Load text file utility function
 def load_text_file(file_path):
@@ -89,7 +94,8 @@ def test_spell_checker(file_path, error_table):
         "the quick brn fox",
         "This is an xampel",
         "It was a bright and suni day.",
-        "Definately going to the party."
+        "Definately going to the party.",
+        "smiled with a sense of his superiority over a weec woman"
     ]
 
     alpha = 0.95
@@ -101,7 +107,7 @@ def test_spell_checker(file_path, error_table):
 def main():
     # Set file paths and load error table
     file_path = 'Corpora/Norvigs_big_text_file.txt'
-    file_path = 'Corpora/trump_historical_tweets.txt'
+    # file_path = 'Corpora/trump_historical_tweets.txt'
     
     if not os.path.exists(file_path):
         print(f"Error: The file path '{file_path}' does not exist.")
@@ -109,7 +115,11 @@ def main():
 
     # Run tests
     print("\nRunning text generation test:")
-    test_text_generation(file_path)
+    test_text_generation(file_path, [None, 
+                                     'Should I stay?',
+                                     'The men and officers returning spoke of a brilliant victory',
+                                     'The quick brown fox stopped at the bar for a sniff',
+                                     "Yo Ho, Yo Ho, a pirate is"])
     
     print("\nRunning text normalization tests:")
     test_text_normalization()
