@@ -22,7 +22,17 @@ def test_text_normalization():
         normalized = normalize_text(example)
         print(f"Example {i+1}: {normalized}")
 
-def test_text_generation(file_path, contexts):
+def test_language_model(file_path):
+    contexts = [None,
+                'This',
+                'This is',
+                'This is the',
+                'This is the life', 
+                'Should I stay?',
+                'The men and officers returning spoke of a brilliant victory',
+                'The quick brown fox stopped at the bar for a sniff',
+                "Yo Ho, Yo Ho, a pirate is a",
+                "Hello"]
     spell_checker = Spell_Checker()  
     lm = Spell_Checker.Language_Model(n=3, chars=False)
     text = load_text_file(file_path)
@@ -30,10 +40,23 @@ def test_text_generation(file_path, contexts):
 
     # Build the model with your loaded text
     spell_checker.add_language_model(lm)
+    file_path = 'LM_dict_representation.txt'
+    with open(file_path, 'w') as file:
+        for context, next_words in spell_checker.lm.model_dict.items():
+            context_str = ' '.join(context)
+            next_words_str = ', '.join([f"{word}: ({count})" for word, count in next_words.items()])
+            file.write(f"{context_str} -> {next_words_str}\n")
+        
     for context in contexts:
-        n = random.randint(5, 25)
+        if not context:
+            n = 25
+        else:
+            n = random.randint(len(context.split()) + 1, 25)
+            evaluation = spell_checker.lm.evaluate_text(context)
+            print(f'\nThe context evaluation score by the model is: {evaluation}')
+            print(f'The Normalized context is :"{normalize_text(context)}"')
         generated_text = spell_checker.lm.generate(context, n)
-        print(f"\nGenerated Text of size {n}:\n", generated_text)
+        print(f"Generated Text of size {n}:\n", generated_text)
         print(f"text size is {len(generated_text.split())}")
     
 
@@ -52,11 +75,6 @@ def test_spell_checker(file_path, error_table):
     # Build the model with your loaded text
     lm.build_model(text)
     print('LM model initiated based on the provided text file')
-
-    # Generate text (LM test)
-    sample_text = "do not remove it"  # Test case to generate text
-    generated_text = lm.generate(sample_text, n=50)
-    print("Generated Text:", generated_text)
     
     # Build spell checker
     spell_checker.add_language_model(lm)
@@ -114,17 +132,22 @@ def main():
         return
 
     # Run tests
-    print("\nRunning text generation test:")
-    test_text_generation(file_path, [None, 
-                                     'Should I stay?',
-                                     'The men and officers returning spoke of a brilliant victory',
-                                     'The quick brown fox stopped at the bar for a sniff',
-                                     "Yo Ho, Yo Ho, a pirate is"])
+    print('''
+          #############################
+          Running language model tests:
+          #############################''')
+    test_language_model(file_path)
     
-    print("\nRunning text normalization tests:")
+    print('''
+        #################################
+        Running Text Normalization tests:
+        #################################''')
     test_text_normalization()
 
-    print("\nRunning spell checker tests:")
+    print('''
+        ############################
+        Running Spell Checker tests:
+        ############################''')
     test_spell_checker(file_path, error_tables)
 
 if __name__ == "__main__":
