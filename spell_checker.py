@@ -89,6 +89,8 @@ class Spell_Checker:
         Returns the most probable fix for the specified text. Use a simple
         noisy channel model if the number of tokens in the specified text is
         smaller than the length (n) of the language model.
+        Attempt context + error based correction on each word, whike prioritizing sentences 
+        with fewer OOV words.
 
         Args:
             text (str): The text to spell check.
@@ -110,8 +112,9 @@ class Spell_Checker:
         for _ in range(k):
             # Tokenize the text
             words = sentence.split()
-        
-            candidate_sentences = []
+            # option to return original sentence if all words are in vocabulary
+            incorrect_tokens = len([w for w in words if w not in self.lm.vocabulary]) + 1
+            candidate_sentences = [(sentence, incorrect_tokens)]
 
             for i, word in enumerate(words):
                 # Get the context for the word (up to the n-gram window size)
@@ -120,25 +123,30 @@ class Spell_Checker:
 
                 # Generate correction for the word considering the context
                 # correction can be the same word
+                # Correction will be a word found in the lm.vocabulary, or the original, if 
+                # no candidate was found
                 corrected_word = self._correction(word, context, alpha)
-                # Add only modifications, where the word can be found in te model
-                if corrected_word != word and corrected_word in self.lm.vocabulary:                    
-                    words[i] = corrected_word
-                    candidate_sentence = ' '.join(words)
-                    candidate_sentences.append(candidate_sentence)
+                # Avoid adding the same sentence twice
+                if corrected_word != word:
+                    # One change in words per candidate
+                    altered_tokens = words.copy()                    
+                    altered_tokens[i] = corrected_word
+                    # Negative factor for sentences still containing a OOV word
+                    incorrect_tokens = len([w for w in altered_tokens if w not in self.lm.vocabulary]) + 1
+                    candidate_sentence = ' '.join(altered_tokens)
+                    candidate_sentences.append((candidate_sentence, incorrect_tokens))
                 
             # Evaluate each candidate sentence and pick the best one
-            if len(candidate_sentences) > 0:
-                scored_sentences = [(self.evaluate_text(sent), sent) for sent in candidate_sentences]
-                most_probable_sentence = max(scored_sentences, key=lambda x: x[0])[1]
+            scored_sentences = [(self.evaluate_text(sent) * factor, sent) for sent, factor in candidate_sentences]
+            most_probable_sentence = max(scored_sentences, key=lambda x: x[0])[1]
 
-                # If the most probable sentence is the same as the current sentence, break the loop
-                if most_probable_sentence == sentence:
-                    break
+            # If the most probable sentence is the same as the current sentence, break the outer loop
+            # Means no improvement from last iteration
+            if most_probable_sentence == sentence:
+                break
 
-                # Update the sentence for the next iteration
-                sentence = most_probable_sentence
-            
+            # Update the sentence for the next iteration
+            sentence = most_probable_sentence
         return most_probable_sentence if most_probable_sentence else sentence
     
 
@@ -166,14 +174,11 @@ class Spell_Checker:
         Generate Possible corrections that are with edit distance 2
         
         Args:
-            word (str): A word for repacement.
+            word (str): A word for relpacement.
         
-        Return: An array of possible candidates for corrections + the original word.
+        Return: A Set() of possible candidates for corrections + the original word.
         """
-        return (self._known([word]) or
-                self._known(self._edits1(word)) or
-                self._known(self._edits2(word)) or
-                [word])
+        return self._known([word]) | self._known(self._edits1(word)) | self._known(self._edits2(word))
         
 
     def _known(self, words):
@@ -183,7 +188,7 @@ class Spell_Checker:
         Args:
             words (array): An array of soon-to-be-candidate words.
         
-        Return: A subset of said array.
+        Return: Set(), A subset of said array.
         """
         if not self.lm:
             return set()
@@ -217,7 +222,7 @@ class Spell_Checker:
             
         Return: set()
         """
-        return (e2 for e1 in self._edits1(word) for e2 in self._edits1(e1))
+        return set(e2 for e1 in self._edits1(word) for e2 in self._edits1(e1))
     
 
     def _P(self, candidate, word, context, alpha):
@@ -243,7 +248,7 @@ class Spell_Checker:
         return 1e8*(lm_prob * error_prob) 
     
 
-    def _error_probability(self, candidate, word, alpha):
+    def _error_probability(self, candidate, word, alpha, min_prob = 1e-8):
         """
         Calculate the probability of transforming `word` to `candidate`.
         If word == candidate, probably the word should not be changed 
@@ -262,6 +267,7 @@ class Spell_Checker:
             word (str) - The original word
             alpha (float) - The probability of keeping a lexical word as is. Passed as
                             error_probability if candidate == word.
+            min_prob (float): Used to assure a very small probability is always returned
         
         Return: Float, probability.
         """
@@ -291,9 +297,13 @@ class Spell_Checker:
                     transposition_prob = self._transposition_probability(cand, wd)
 
             # Return the highest probability among the calculated probabilities
-            return max(insertion_prob, deletion_prob, substitution_prob, transposition_prob, 1e-8)
+            return max(insertion_prob, deletion_prob, substitution_prob, transposition_prob, min_prob)
 
         # First calculate the direct edit probability
+        # Make sure cand is relevant before entering the function
+        if candidate not in self.lm.vocabulary:
+            return min_prob
+
         max_prob = direct_edit_probability(candidate, word)
 
         # Now, consider edits of edits (distance 2 words)
@@ -301,6 +311,7 @@ class Spell_Checker:
             if intermediate == candidate:
                 continue
             
+            # Even if intermediate not in model, look for error probability to it
             prob_intermediate_to_word = direct_edit_probability(intermediate, word)
             
             for edit1 in self._edits1(intermediate):
