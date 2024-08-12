@@ -1,7 +1,6 @@
 '''
 TO-DO (Further Improvements):
  - Incorporate Wikipedia errors into error table
- - remmember to add #c formatted errors to error table - and look for potencial errors in pairs identification.
  - Train the model on a bigger, more diverse corpus.
 '''
 
