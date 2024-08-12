@@ -661,10 +661,3 @@ def normalize_text(text, lower = True, remove_numbers=True, remove_punctuation=F
         text = ' '.join([word.strip(string.punctuation) for word in text.split()]) 
 
     return text
-
-
-def who_am_i():  # this is not a class method
-    """
-    Returns a dictionary with your name, id number and email. keys=['name', 'id','email'].
-    """
-    return {'name': 'Shahar Oded', 'id': '208388918', 'email': 'odedshah@post.bgu.ac.il'}
